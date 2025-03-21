@@ -1,1 +1,5 @@
 .idea
+
+crawlling/.env
+
+crawlling/__pycache__
