@@ -1,7 +1,14 @@
-from pydantic import BaseModel
+from typing import TypedDict, Optional, List
 
-class Article(BaseModel):
-    title: str
-    link: str
-    source: str
-    pub_date: str
+class NewsArticle(TypedDict):
+    thumbnail: Optional[str]
+    link: Optional[str]
+    title: Optional[str]
+    lede: Optional[str]
+    source: Optional[str]
+    time: Optional[str]
+
+class CrawlResult(TypedDict):
+    message: str
+    total_articles: int
+    data: List[NewsArticle]
