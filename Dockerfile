@@ -1,92 +1,56 @@
-FROM ubuntu:22.04
+FROM public.ecr.aws/lambda/python:3.9
 
-# 비대화형 설치 설정
-ENV DEBIAN_FRONTEND=noninteractive
-ENV TZ=Asia/Seoul
-
-# 기본 패키지 및 Python 설치
-RUN apt-get update && \
-    apt-get install -y \
-    python3.9 \
-    python3-pip \
+# 기본 패키지 설치
+RUN yum update -y && \
+    yum install -y \
     wget \
-    curl \
     unzip \
-    tzdata \
-    && apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+    tar \
+    gzip \
+    && yum clean all
 
-# AWS Lambda Runtime Interface Emulator 설치
-RUN curl -Lo /usr/local/bin/aws-lambda-rie \
-    https://github.com/aws/aws-lambda-runtime-interface-emulator/releases/latest/download/aws-lambda-rie && \
-    chmod +x /usr/local/bin/aws-lambda-rie
+# 필요한 라이브러리 설치
+RUN yum install -y \
+    alsa-lib \
+    atk \
+    cups-libs \
+    gtk3 \
+    ipa-gothic-fonts \
+    libXcomposite \
+    libXcursor \
+    libXdamage \
+    libXext \
+    libXi \
+    libXrandr \
+    libXScrnSaver \
+    libXtst \
+    pango \
+    xorg-x11-fonts-100dpi \
+    xorg-x11-fonts-75dpi \
+    xorg-x11-fonts-cyrillic \
+    xorg-x11-fonts-misc \
+    xorg-x11-fonts-Type1 \
+    xorg-x11-utils \
+    && yum clean all
 
-# 작업 디렉토리 설정
-WORKDIR /var/task
+# Playwright용 Chromium 수동 설치 (AWS Lambda에 호환되는 방식)
+RUN mkdir -p ${LAMBDA_TASK_ROOT}/browser
+COPY browser_setup.sh ${LAMBDA_TASK_ROOT}/
+RUN chmod +x ${LAMBDA_TASK_ROOT}/browser_setup.sh && \
+    ${LAMBDA_TASK_ROOT}/browser_setup.sh
 
 # Python 패키지 설치
-COPY requirements.txt .
-RUN echo "Installing Python packages..." && \
-    pip3 install --no-cache-dir -r requirements.txt && \
-    pip3 install --no-cache-dir playwright awslambdaric && \
-    echo "Python packages installed successfully"
-
-# Playwright 브라우저 설치 (수정된 부분)
-ENV PLAYWRIGHT_BROWSERS_PATH=/var/task/browser
-RUN echo "Installing Playwright browsers..." && \
-    playwright install --with-deps chromium && \
-    echo "Playwright browsers installed successfully"
+COPY requirements.txt ${LAMBDA_TASK_ROOT}/
+RUN pip install --no-cache-dir -r ${LAMBDA_TASK_ROOT}/requirements.txt
+RUN pip install --no-cache-dir playwright
 
 # 애플리케이션 코드 복사
-COPY crawlling/ /var/task/crawlling/
-COPY lambda_function.py /var/task/
-
-# 디버그용 테스트 스크립트 생성
-RUN echo 'import sys\n\
-import os\n\
-import json\n\
-import logging\n\
-\n\
-# 로깅 설정\n\
-logging.basicConfig(level=logging.INFO)\n\
-\n\
-print("=== Environment Variables ===")\n\
-for key, value in os.environ.items():\n\
-    if "RDS" in key:\n\
-        print(f"{key}: {value}")\n\
-\n\
-print("\\n=== Python Path ===")\n\
-print(sys.path)\n\
-\n\
-print("\\n=== Starting Crawler ===")\n\
-try:\n\
-    import lambda_function\n\
-    print("Lambda function imported successfully")\n\
-    result = lambda_function.lambda_handler({}, None)\n\
-    print("\\n=== Execution Result ===")\n\
-    print(json.dumps(result, indent=2))\n\
-except Exception as e:\n\
-    print(f"\\n=== Error Occurred ===")\n\
-    print(f"Error: {str(e)}")\n\
-    import traceback\n\
-    print("\\n=== Traceback ===")\n\
-    print(traceback.format_exc())\n\
-' > /var/task/debug.py
+COPY crawlling/ ${LAMBDA_TASK_ROOT}/crawlling/
+COPY lambda_function.py ${LAMBDA_TASK_ROOT}/
 
 # 환경 변수 설정
-ENV PYTHONPATH="/var/task"
-ENV PLAYWRIGHT_BROWSERS_PATH="/var/task/browser"
-ENV PYTHONUNBUFFERED=1
+ENV PLAYWRIGHT_BROWSERS_PATH=${LAMBDA_TASK_ROOT}/browser
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 
-# Lambda 실행을 위한 bootstrap 스크립트 생성
-RUN mkdir -p /var/runtime && \
-    echo '#!/bin/bash\n\
-if [ -z "${AWS_LAMBDA_RUNTIME_API}" ]; then\n\
-    exec /usr/local/bin/aws-lambda-rie /usr/local/bin/python3 -m awslambdaric "$@"\n\
-else\n\
-    exec /usr/local/bin/python3 -m awslambdaric "$@"\n\
-fi' > /var/runtime/bootstrap && \
-    chmod +x /var/runtime/bootstrap
-
-ENTRYPOINT ["/var/runtime/bootstrap"]
+# Lambda 핸들러 지정
 CMD ["lambda_function.lambda_handler"]
