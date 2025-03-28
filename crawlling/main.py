@@ -144,87 +144,130 @@ def crawl_naver_news():
     """네이버 뉴스 크롤링 메인 함수"""
     BASE_URL = "https://news.naver.com/breakingnews/section/101/258"
     articles = []
-    target_article_count = 100  # 목표 기사 수
+    target_article_count = 50
 
     with sync_playwright() as p:
         browser = p.chromium.launch(
             headless=True,
-            args=["--no-sandbox", '--disable-dev-shm-usage'],
+            args=[
+                "--no-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-setuid-sandbox",
+                "--single-process",
+                "--no-zygote",
+                "--disable-gpu",
+                "--disable-web-security",
+                "--disable-features=IsolateOrigins,site-per-process",
+                "--ignore-certificate-errors",
+            ]
         )
+
         context = browser.new_context(
-            viewport={"width": 1920, "height": 1080},
-            user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36"
+            viewport={"width": 1280, "height": 720},
+            user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+            bypass_csp=True,
+            extra_http_headers={
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+                "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
+            }
         )
 
-        page = context.new_page()
+        try:
+            page = context.new_page()
+            page.set_default_timeout(180000)
 
-        # 초기 페이지 로드
-        page.goto(BASE_URL)
-        page.wait_for_selector("div.sa_item_inner", timeout=20000)
-        logger.info("초기 페이지 로드 완료")
-
-        # 초기 기사 수집
-        current_articles = collect_articles_from_page(page)
-        articles.extend(current_articles)
-        logger.info(f"초기 기사 수: {len(articles)}")
-
-        # 목표 기사 수에 도달할 때까지 '기사 더보기' 버튼 클릭
-        more_button_selector = "#newsct > div.section_latest > div > div.section_more > a"
-        click_count = 0
-        max_clicks = 15  # 최대 클릭 횟수 제한
-        consecutive_no_new = 0  # 연속적으로 새 기사가 없는 횟수
-
-        while len(articles) < target_article_count and click_count < max_clicks:
-            try:
-                # 페이지 하단으로 스크롤
-                page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-                page.wait_for_timeout(1000)
-
-                # '기사 더보기' 버튼이 있는지 확인
-                is_button_visible = page.is_visible(more_button_selector)
-                if not is_button_visible:
-                    logger.info("더 이상 '기사 더보기' 버튼이 없습니다.")
+            # 초기 페이지 로드 시도
+            for attempt in range(3):
+                try:
+                    logger.info(f"페이지 로드 시도 {attempt + 1}/3")
+                    page.goto(BASE_URL, wait_until="networkidle", timeout=180000)
+                    page.wait_for_selector("div.sa_item_inner", timeout=30000)
                     break
+                except Exception as e:
+                    if attempt == 2:
+                        raise Exception(f"페이지 로드 실패: {str(e)}")
+                    page.wait_for_timeout(5000 * (attempt + 1))
 
-                # 버튼 클릭
-                logger.info(f"'기사 더보기' 버튼 클릭 시도 {click_count + 1}")
-                page.click(more_button_selector)
-                page.wait_for_timeout(2000)  # 데이터 로드 대기
+            logger.info("초기 페이지 로드 완료")
 
-                # 새 기사 수집
-                new_articles = collect_articles_from_page(page)
+            # 초기 기사 수집
+            current_articles = collect_articles_from_page(page)
+            articles.extend(current_articles)
+            logger.info(f"초기 기사 수: {len(articles)}")
 
-                # 중복 제거
-                before_count = len(articles)
-                for article in new_articles:
-                    if article["link"] and not any(existing["link"] == article["link"] for existing in articles):
-                        articles.append(article)
+            # 기사 더보기 버튼 클릭 및 추가 기사 수집
+            more_button_selector = "#newsct > div.section_latest > div > div.section_more > a"
+            click_count = 0
+            max_clicks = 15
+            consecutive_no_new = 0
 
-                new_added = len(articles) - before_count
-                logger.info(f"클릭 {click_count + 1} 후 {new_added}개 새 기사 추가됨. 현재 총 {len(articles)}개")
+            while len(articles) < target_article_count and click_count < max_clicks:
+                try:
+                    # 스크롤 및 대기
+                    page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                    page.wait_for_timeout(2000)  # 스크롤 대기 시간 증가
 
-                # 새 기사가 추가되지 않았다면 종료
-                if new_added == 0:
-                    consecutive_no_new += 1
-                    if consecutive_no_new >= 3:  # 3번 연속 새 기사가 없으면 종료
-                        logger.info("3번 연속 새 기사가 추가되지 않아 종료합니다.")
+                    # 버튼 가시성 확인
+                    is_button_visible = page.is_visible(more_button_selector)
+                    if not is_button_visible:
+                        logger.info("더 이상 '기사 더보기' 버튼이 없습니다.")
                         break
-                else:
-                    consecutive_no_new = 0
 
-                click_count += 1
+                    # 버튼 클릭 시도
+                    logger.info(f"'기사 더보기' 버튼 클릭 시도 {click_count + 1}")
 
+                    # JavaScript로 직접 클릭 (더 안정적인 클릭 방식)
+                    page.evaluate(f"document.querySelector('{more_button_selector}').click()")
+                    page.wait_for_timeout(3000)  # 데이터 로드 대기 시간 증가
+
+                    # 새로운 기사가 로드될 때까지 대기
+                    page.wait_for_selector("div.sa_item_inner", timeout=30000)
+
+                    # 새 기사 수집
+                    new_articles = collect_articles_from_page(page)
+
+                    # 중복 제거 및 새 기사 추가
+                    before_count = len(articles)
+                    for article in new_articles:
+                        if article["link"] and not any(existing["link"] == article["link"] for existing in articles):
+                            articles.append(article)
+
+                    new_added = len(articles) - before_count
+                    logger.info(f"클릭 {click_count + 1} 후 {new_added}개 새 기사 추가됨. 현재 총 {len(articles)}개")
+
+                    # 새 기사 추가 여부 확인
+                    if new_added == 0:
+                        consecutive_no_new += 1
+                        if consecutive_no_new >= 3:
+                            logger.info("3번 연속 새 기사가 추가되지 않아 종료합니다.")
+                            break
+                    else:
+                        consecutive_no_new = 0
+
+                    click_count += 1
+
+                except Exception as e:
+                    logger.error(f"버튼 클릭 중 오류 발생: {str(e)}")
+                    # 한 번의 실패는 허용하고 다시 시도
+                    page.wait_for_timeout(5000)
+                    continue
+
+            logger.info(f"최종 크롤링 완료: 총 {len(articles)}개 기사")
+
+            # DB에 저장
+            save_articles_to_db(articles)
+
+            return len(articles)
+
+        except Exception as e:
+            logger.error(f"크롤링 중 오류 발생: {str(e)}")
+            raise
+        finally:
+            try:
+                context.close()
+                browser.close()
             except Exception as e:
-                logger.error(f"버튼 클릭 중 오류 발생: {str(e)}")
-                break
-
-        browser.close()
-        logger.info(f"최종 크롤링 완료: 총 {len(articles)}개 기사")
-
-        # DB에 저장
-        save_articles_to_db(articles)
-
-        return len(articles)
+                logger.error(f"브라우저 종료 중 오류: {str(e)}")
 
 
 # 직접 실행 시 테스트
