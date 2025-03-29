@@ -3,3 +3,5 @@
 crawlling/.env
 
 crawlling/__pycache__
+
+.env
