@@ -25,9 +25,11 @@ jobs:
             docker build -t naver-news-crawler:latest .
             
             # 크론탭 설정 (없으면 추가)
+            # main 브랜치 잘 푸쉬되었는지 확인하는 주석
             if ! crontab -l | grep -q "run-crawler.sh"; then
-              (crontab -l 2>/dev/null; echo "0 9,15,21 * * * /home/ubuntu/run-crawler.sh") | crontab -
+              (crontab -l 2>/dev/null; echo -e "0 9,15,21 * * * /home/ubuntu/run-crawler.sh\n50 21 * * * /home/ubuntu/run-crawler.sh") | crontab -
             fi
+
             
             # 실행 스크립트 업데이트
             cat > /home/ubuntu/run-crawler.sh << 'EOLS'
