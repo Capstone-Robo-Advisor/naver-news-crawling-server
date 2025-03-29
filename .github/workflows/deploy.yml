@@ -16,19 +16,31 @@ jobs:
           username: ubuntu
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
+            # 디버깅을 위한 로그 시작
+            echo "===== 배포 시작: $(date) =====" > /home/ubuntu/deploy.log
+            
             # 코드 업데이트
             cd /home/ubuntu/naver-news-crawler || git clone https://github.com/Capstone-Robo-Advisor/ai-server.git /home/ubuntu/naver-news-crawler
             cd /home/ubuntu/naver-news-crawler
             git pull
             
+            # Git 상태 및 브랜치 확인 (디버깅용)
+            echo "Current branch:" >> /home/ubuntu/deploy.log
+            git branch >> /home/ubuntu/deploy.log
+            
             # Docker 이미지 빌드
             docker build -t naver-news-crawler:latest .
             
-            # 크론탭 설정 (없으면 추가)
-            # main 브랜치 잘 푸쉬되었는지 확인하는 주석
-            # 크론탭 설정 (항상 업데이트)
+            # 크론탭 확인 (디버깅용)
+            echo "Current crontab before update:" >> /home/ubuntu/deploy.log
+            crontab -l >> /home/ubuntu/deploy.log 2>&1
+            
+            # 크론탭 설정 업데이트
             (crontab -l 2>/dev/null | grep -v "run-crawler.sh"; echo -e "0 9,15,21 * * * /home/ubuntu/run-crawler.sh\n15 22 * * * /home/ubuntu/run-crawler.sh") | crontab -
-
+            
+            # 변경 후 크론탭 확인 (디버깅용)
+            echo "Crontab after update:" >> /home/ubuntu/deploy.log
+            crontab -l >> /home/ubuntu/deploy.log
             
             # 실행 스크립트 업데이트
             cat > /home/ubuntu/run-crawler.sh << 'EOLS'
@@ -42,3 +54,6 @@ jobs:
             EOLS
             
             chmod +x /home/ubuntu/run-crawler.sh
+            
+            # 배포 완료 로그
+            echo "===== 배포 완료: $(date) =====" >> /home/ubuntu/deploy.log
