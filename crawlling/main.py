@@ -144,7 +144,7 @@ def crawl_naver_news():
     """네이버 뉴스 크롤링 메인 함수"""
     BASE_URL = "https://news.naver.com/breakingnews/section/101/258"
     articles = []
-    target_article_count = 50
+    target_article_count = 100
 
     with sync_playwright() as p:
         browser = p.chromium.launch(
@@ -153,8 +153,8 @@ def crawl_naver_news():
                 "--no-sandbox",
                 "--disable-dev-shm-usage",
                 "--disable-setuid-sandbox",
-                "--single-process",
-                "--no-zygote",
+                # "--single-process",
+                # "--no-zygote",
                 "--disable-gpu",
                 "--disable-web-security",
                 "--disable-features=IsolateOrigins,site-per-process",
