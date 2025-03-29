@@ -1,0 +1,43 @@
+name: Deploy Crawler to EC2
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ubuntu
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            # 코드 업데이트
+            cd /home/ubuntu/naver-news-crawler || git clone https://github.com/Capstone-Robo-Advisor/ai-server.git /home/ubuntu/naver-news-crawler
+            cd /home/ubuntu/naver-news-crawler
+            git pull
+            
+            # Docker 이미지 빌드
+            docker build -t naver-news-crawler:latest .
+            
+            # 크론탭 설정 (없으면 추가)
+            if ! crontab -l | grep -q "run-crawler.sh"; then
+              (crontab -l 2>/dev/null; echo "0 9,15,21 * * * /home/ubuntu/run-crawler.sh") | crontab -
+            fi
+            
+            # 실행 스크립트 업데이트
+            cat > /home/ubuntu/run-crawler.sh << 'EOLS'
+            #!/bin/bash
+            LOG_FILE="/var/log/crawler/crawler-$(date +\%Y-\%m-\%d).log"
+            echo "Starting crawler at $(date)" >> $LOG_FILE
+            docker run --rm \
+              --env-file /home/ubuntu/.env \
+              naver-news-crawler:latest >> $LOG_FILE 2>&1
+            echo "Finished crawler at $(date)" >> $LOG_FILE
+            EOLS
+            
+            chmod +x /home/ubuntu/run-crawler.sh
