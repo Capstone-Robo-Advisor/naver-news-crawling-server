@@ -20,7 +20,7 @@ jobs:
             echo "===== 배포 시작: $(date) =====" > /home/ubuntu/deploy.log
             
             # 코드 업데이트
-            cd /home/ubuntu/naver-news-crawler || git clone https://github.com/Capstone-Robo-Advisor/ai-server.git /home/ubuntu/naver-news-crawler
+            cd /home/ubuntu/naver-news-crawler || https://github.com/Capstone-Robo-Advisor/naver-news-crawling-server.git /home/ubuntu/naver-news-crawler
             cd /home/ubuntu/naver-news-crawler
             
             git fetch origin main
