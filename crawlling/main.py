@@ -95,40 +95,79 @@ def save_articles_to_db(articles):
     try:
         conn = connect_to_db()
         with conn.cursor() as cursor:
-            for article in articles:
-                # 중복 체크 (링크 기준)
-                if not article['link']:
-                    logger.warning("링크가 없는 기사 건너뜀")
-                    continue
+            # 현재 DB에 저장된 기사 수 확인
+            cursor.execute("SELECT COUNT(*) FROM news_articles")
+            current_count = cursor.fetchone()[0]
 
-                cursor.execute(
-                    "SELECT id FROM news_articles WHERE link = %s",
-                    (article['link'],)
-                )
-                exists = cursor.fetchone()
+            if current_count >= 100:
+                logger.info("DB에 이미 100개의 기사가 저장되어 있습니다. 기존 기사만 갱신합니다.")
+                # 기존 기사 갱신 로직
+                for article in articles:
+                    if not article['link']:
+                        logger.warning("링크가 없는 기사 건너뜀")
+                        continue
 
-                if not exists:
-                    # 새 기사 삽입
                     cursor.execute(
-                        """
-                        INSERT INTO news_articles 
-                        (title, content, source, link, image_url, published_time, crawled_at)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s)
-                        """,
-                        (
-                            article['title'],
-                            article['lede'],
-                            article['source'],
-                            article['link'],
-                            article['thumbnail'],
-                            article['time_text'],
-                            article['crawled_at']
-                        )
+                        "SELECT id FROM news_articles WHERE link = %s",
+                        (article['link'],)
                     )
-                    logger.info(f"새 기사 저장: {article['title']}")
+                    exists = cursor.fetchone()
+
+                    if exists:
+                        # 기존 기사 업데이트
+                        cursor.execute(
+                            """
+                            UPDATE news_articles
+                            SET title = %s, content = %s, source = %s, image_url = %s, published_time = %s, crawled_at = %s
+                            WHERE link = %s
+                            """,
+                            (
+                                article['title'],
+                                article['lede'],
+                                article['source'],
+                                article['thumbnail'],
+                                article['time_text'],
+                                article['crawled_at'],
+                                article['link']
+                            )
+                        )
+                        logger.info(f"기존 기사 갱신: {article['title']}")
+
+            else:
+                # 새 기사 삽입 로직 (필요 시)
+                for article in articles:
+                    if not article['link']:
+                        logger.warning("링크가 없는 기사 건너뜀")
+                        continue
+
+                    cursor.execute(
+                        "SELECT id FROM news_articles WHERE link = %s",
+                        (article['link'],)
+                    )
+                    exists = cursor.fetchone()
+
+                    if not exists:
+                        # 새 기사 삽입
+                        cursor.execute(
+                            """
+                            INSERT INTO news_articles 
+                            (title, content, source, link, image_url, published_time, crawled_at)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s)
+                            """,
+                            (
+                                article['title'],
+                                article['lede'],
+                                article['source'],
+                                article['link'],
+                                article['thumbnail'],
+                                article['time_text'],
+                                article['crawled_at']
+                            )
+                        )
+                        logger.info(f"새 기사 저장: {article['title']}")
 
         conn.commit()
-        logger.info(f"총 {len(articles)}개 기사 중 새로운 기사 처리 완료")
+        logger.info(f"총 {len(articles)}개 기사 중 새로운 기사 및 갱신 처리 완료")
 
     except Exception as e:
         logger.error(f"DB 저장 중 오류: {str(e)}")
