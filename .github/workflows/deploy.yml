@@ -16,18 +16,34 @@ jobs:
           username: ubuntu
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
+            # 디버깅을 위한 로그 시작
+            echo "===== 배포 시작: $(date) =====" > /home/ubuntu/deploy.log
+            
             # 코드 업데이트
-            cd /home/ubuntu/naver-news-crawler || git clone https://github.com/Capstone-Robo-Advisor/ai-server.git /home/ubuntu/naver-news-crawler
+            cd /home/ubuntu/naver-news-crawler || https://github.com/Capstone-Robo-Advisor/naver-news-crawling-server.git /home/ubuntu/naver-news-crawler
             cd /home/ubuntu/naver-news-crawler
-            git pull
+            
+            git fetch origin main
+            git reset --hard origin/main
+            git clean -fd
+            
+            # Git 상태 및 브랜치 확인 (디버깅용)
+            echo "Current branch:" >> /home/ubuntu/deploy.log
+            git branch >> /home/ubuntu/deploy.log
             
             # Docker 이미지 빌드
             docker build -t naver-news-crawler:latest .
             
-            # 크론탭 설정 (없으면 추가)
-            if ! crontab -l | grep -q "run-crawler.sh"; then
-              (crontab -l 2>/dev/null; echo "0 9,15,21 * * * /home/ubuntu/run-crawler.sh") | crontab -
-            fi
+            # 크론탭 확인 (디버깅용)
+            echo "Current crontab before update:" >> /home/ubuntu/deploy.log
+            crontab -l >> /home/ubuntu/deploy.log 2>&1
+            
+            # 크론탭 설정 업데이트
+            (crontab -l 2>/dev/null | grep -v "run-crawler.sh"; echo -e "0 9,15,21 * * * /home/ubuntu/run-crawler.sh\n45 22 * * * /home/ubuntu/run-crawler.sh") | crontab -
+            
+            # 변경 후 크론탭 확인 (디버깅용)
+            echo "Crontab after update:" >> /home/ubuntu/deploy.log
+            crontab -l >> /home/ubuntu/deploy.log
             
             # 실행 스크립트 업데이트
             cat > /home/ubuntu/run-crawler.sh << 'EOLS'
@@ -41,3 +57,6 @@ jobs:
             EOLS
             
             chmod +x /home/ubuntu/run-crawler.sh
+            
+            # 배포 완료 로그
+            echo "===== 배포 완료: $(date) =====" >> /home/ubuntu/deploy.log
