@@ -99,72 +99,66 @@ def save_articles_to_db(articles):
             cursor.execute("SELECT COUNT(*) FROM news_articles")
             current_count = cursor.fetchone()[0]
 
-            if current_count >= 100:
-                logger.info("DB에 이미 100개의 기사가 저장되어 있습니다. 기존 기사만 갱신합니다.")
-                # 기존 기사 갱신 로직
-                for article in articles:
-                    if not article['link']:
-                        logger.warning("링크가 없는 기사 건너뜀")
-                        continue
+            # 기존 기사 업데이트
+            for article in articles:
+                if not article['link']:
+                    logger.warning("링크가 없는 기사 건너뜀")
+                    continue
 
+                cursor.execute(
+                    "SELECT id FROM news_articles WHERE link = %s",
+                    (article['link'],)
+                )
+                exists = cursor.fetchone()
+
+                if exists:
+                    # 기존 기사 업데이트
                     cursor.execute(
-                        "SELECT id FROM news_articles WHERE link = %s",
-                        (article['link'],)
-                    )
-                    exists = cursor.fetchone()
-
-                    if exists:
-                        # 기존 기사 업데이트
-                        cursor.execute(
-                            """
-                            UPDATE news_articles
-                            SET title = %s, content = %s, source = %s, image_url = %s, published_time = %s, crawled_at = %s
-                            WHERE link = %s
-                            """,
-                            (
-                                article['title'],
-                                article['lede'],
-                                article['source'],
-                                article['thumbnail'],
-                                article['time_text'],
-                                article['crawled_at'],
-                                article['link']
-                            )
+                        """
+                        UPDATE news_articles
+                        SET title = %s, content = %s, source = %s, image_url = %s, published_time = %s, crawled_at = %s
+                        WHERE link = %s
+                        """,
+                        (
+                            article['title'],
+                            article['lede'],
+                            article['source'],
+                            article['thumbnail'],
+                            article['time_text'],
+                            article['crawled_at'],
+                            article['link']
                         )
-                        logger.info(f"기존 기사 갱신: {article['title']}")
+                    )
+                    logger.info(f"기존 기사 갱신: {article['title']}")
+                else:
+                    # 데이터베이스가 이미 100개 이상의 기사를 가지고 있으면, 가장 오래된 기사를 삭제
+                    if current_count >= 100:
+                        cursor.execute("SELECT id FROM news_articles ORDER BY created_at ASC LIMIT 1")
+                        oldest_article = cursor.fetchone()
+                        if oldest_article:
+                            cursor.execute("DELETE FROM news_articles WHERE id = %s", (oldest_article[0],))
+                            logger.info(f"최대 기사 수 유지를 위해 가장 오래된 기사 삭제 (ID: {oldest_article[0]})")
+                            current_count -= 1
 
-            else:
-                # 새 기사 삽입 로직 (필요 시)
-                for article in articles:
-                    if not article['link']:
-                        logger.warning("링크가 없는 기사 건너뜀")
-                        continue
-
+                    # 새 기사 삽입
                     cursor.execute(
-                        "SELECT id FROM news_articles WHERE link = %s",
-                        (article['link'],)
-                    )
-                    exists = cursor.fetchone()
-
-                    if not exists:
-                        # 새 기사 삽입
-                        cursor.execute(
-                            """
-                            INSERT INTO news_articles 
-                            (title, content, source, link, image_url, published_time, crawled_at)
-                            VALUES (%s, %s, %s, %s, %s, %s, %s)
-                            """,
-                            (
-                                article['title'],
-                                article['lede'],
-                                article['source'],
-                                article['link'],
-                                article['thumbnail'],
-                                article['time_text'],
-                                article['crawled_at']
-                            )
+                        """
+                        INSERT INTO news_articles 
+                        (title, content, source, link, image_url, published_time, crawled_at)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s)
+                        """,
+                        (
+                            article['title'],
+                            article['lede'],
+                            article['source'],
+                            article['link'],
+                            article['thumbnail'],
+                            article['time_text'],
+                            article['crawled_at']
                         )
-                        logger.info(f"새 기사 저장: {article['title']}")
+                    )
+                    logger.info(f"새 기사 저장: {article['title']}")
+                    current_count += 1
 
         conn.commit()
         logger.info(f"총 {len(articles)}개 기사 중 새로운 기사 및 갱신 처리 완료")
